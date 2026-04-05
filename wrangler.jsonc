@@ -17,8 +17,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "visatk-shop",
-      "database_id": "eb041018-78bc-45b1-a284-0b0eeb11b05f",
+      "database_name": "knowledge-base-db",
+      "database_id": "041a8ddd-5f59-430b-8923-f9622e409fe3",
       "migrations_dir": "drizzle"
     }
   ]
