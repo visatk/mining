@@ -18,8 +18,7 @@
     {
       "binding": "DB",
       "database_name": "visatk",
-      "database_id": "45daddfe-0e9e-44e3-aa9b-367ffe349f30",
-      "migrations_dir": "drizzle"
+      "database_id": "45daddfe-0e9e-44e3-aa9b-367ffe349f30"
     }
   ]
 }
