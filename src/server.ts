@@ -3,13 +3,19 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sign, verify } from 'hono/jwt';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
+import { createMiddleware } from 'hono/factory';
 
 export interface Env {
   DB: D1Database;
   JWT_SECRET: string;
 }
 
-const app = new Hono<{ Bindings: Env }>();
+// Define the variables we will pass through the Hono context
+type Variables = {
+  user: { id: string; username: string };
+};
+
+const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // Helper: Password Hashing (using native Web Crypto API)
 const hashPassword = async (password: string) => {
@@ -19,7 +25,28 @@ const hashPassword = async (password: string) => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-// --- AUTHENTICATION ROUTES ---
+// --- AUTH MIDDLEWARE ---
+// This locks down any route it's attached to.
+const protect = createMiddleware<{ Bindings: Env; Variables: Variables }>(async (c, next) => {
+  const token = getCookie(c, 'auth_token');
+  
+  if (!token) {
+    return c.json({ success: false, error: 'Unauthorized - Missing Token' }, 401);
+  }
+
+  try {
+    const payload = await verify(token, c.env.JWT_SECRET || 'fallback_secret');
+    // Attach the verified user to the request context
+    c.set('user', { id: payload.id as string, username: payload.username as string });
+    await next();
+  } catch (err) {
+    // If token is invalid/expired, clear the cookie and reject
+    deleteCookie(c, 'auth_token', { path: '/' });
+    return c.json({ success: false, error: 'Unauthorized - Invalid or Expired Token' }, 401);
+  }
+});
+
+// --- PUBLIC AUTHENTICATION ROUTES ---
 
 app.post('/api/auth/register', zValidator('json', z.object({
   username: z.string().min(3).max(30),
@@ -72,17 +99,16 @@ app.post('/api/auth/logout', (c) => {
   return c.json({ success: true });
 });
 
-app.get('/api/auth/me', async (c) => {
-  const token = getCookie(c, 'auth_token');
-  if (!token) return c.json({ success: false }, 401);
-
+// Protect the /me route to ensure the token is valid on load
+app.get('/api/auth/me', protect, async (c) => {
+  const sessionUser = c.get('user');
+  
   try {
-    const payload = await verify(token, c.env.JWT_SECRET || 'fallback_secret');
     const user = await c.env.DB.prepare('SELECT id, username, balance FROM users WHERE id = ?')
-      .bind(payload.id as string)
+      .bind(sessionUser.id)
       .first();
 
-    if (!user) throw new Error('User not found');
+    if (!user) throw new Error('User not found in DB');
     return c.json({ success: true, user });
   } catch {
     deleteCookie(c, 'auth_token', { path: '/' });
@@ -90,10 +116,11 @@ app.get('/api/auth/me', async (c) => {
   }
 });
 
-// --- CARD INVENTORY ROUTES ---
+// --- PROTECTED CARD INVENTORY ROUTES ---
 
 app.get(
   '/api/cards',
+  protect, // <--- Apply the middleware to lock this route down
   zValidator(
     'query',
     z.object({
@@ -104,10 +131,9 @@ app.get(
     })
   ),
   async (c) => {
-    // Optional: Protect route by validating token here
-    // const token = getCookie(c, 'auth_token');
-    // if (!token) return c.json({ success: false, error: 'Unauthorized' }, 401);
-
+    // You now have guaranteed access to the authenticated user here:
+    // const user = c.get('user'); 
+    
     const { bin, country, limit, page } = c.req.valid('query');
     
     const limitNum = parseInt(limit, 10);
