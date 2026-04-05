@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "parak",
-  "main": "src/index.ts",
+  "main": "src/server.ts",
   "compatibility_date": "2026-04-05",
   "compatibility_flags": [
     "nodejs_compat"
@@ -20,45 +20,6 @@
       "database_name": "visatk-shop",
       "database_id": "eb041018-78bc-45b1-a284-0b0eeb11b05f",
       "migrations_dir": "drizzle"
-    }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "MY_BUCKET",
-      "bucket_name": "agentr2"
-    }
-  ],
-  "queues": {
-    "producers": [
-      {
-        "queue": "openclaw-telemetry",
-        "binding": "MY_QUEUE"
-      }
-    ]
-  },
-  "queues": {
-    "consumers": [
-      {
-        "queue": "my-queue",
-        "max_batch_size": 10,
-        "max_batch_timeout": 30,
-        "max_retries": 10,
-        "dead_letter_queue": "openclaw-telemetry-dlq"
-      }
-    ]
-  },
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "WALLET_DO",
-        "class_name": "WalletDO"
-      }
-    ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["WalletDO"]
     }
   ]
 }
