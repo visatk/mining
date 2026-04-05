@@ -68,7 +68,6 @@ function Dashboard() {
   return (
     <div className="space-y-6 lg:space-y-8 animate-in fade-in duration-300">
       <PageHeader title="Dashboard" />
-      
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
         <Card className="p-5 lg:p-6 hover:border-slate-600 transition-colors">
           <div className="flex items-center gap-2 text-slate-400 mb-3">
@@ -110,38 +109,8 @@ function Dashboard() {
                </a>
              ))}
           </div>
-          <div className="pt-2 border-t border-red-500/10">
-            <p className="mb-2">Join official Telegram for updates [NEW LINK]:</p>
-            <a href="https://t.me/elonmoney_bid" target="_blank" rel="noreferrer" className="inline-block bg-[#0f172a] text-red-400 px-3 py-1.5 rounded-md text-xs border border-red-500/20 hover:bg-red-500/10 transition-colors font-mono">
-              https://t.me/elonmoney_bid
-            </a>
-          </div>
-          <p className="text-red-300/80 italic text-xs">All other domains are fake/scam. We do not sell on Telegram or any other social platform!</p>
         </div>
       </Card>
-
-      <div>
-        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-          <ShieldCheck size={20} className="text-blue-500" /> Platform News & Updates
-        </h2>
-        <div className="space-y-4">
-          <Card className="p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-              <h3 className="text-white font-bold text-base">NEW CC UPDATE! [Shop#1]</h3>
-              <span className="text-xs font-mono bg-[#0f172a] text-blue-400 px-2 py-1 rounded border border-[#2d3748]">Apr 02, 2026 / 08:15 PM</span>
-            </div>
-            <div className="text-sm text-slate-300 space-y-3">
-              <p>GOOD VALID USA & MIX UPDATE! ADDED AROUND <span className="text-emerald-400 font-bold">2000+ CCs</span>.</p>
-              <div className="bg-[#0f172a] p-3 rounded-lg border border-[#2d3748] font-mono text-xs space-y-1">
-                <p className="text-blue-300">APR#02_USA[GREAT]</p>
-                <p className="text-blue-300">APR#02_USA/MIX</p>
-                <p className="text-blue-300">APR#02_MIX[GOOD]</p>
-                <p className="text-blue-300">APR#02_USA[GOOD]</p>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
     </div>
   );
 }
@@ -149,11 +118,16 @@ function Dashboard() {
 function PurchaseCards() {
   const [showFilters, setShowFilters] = useState(false);
   const [cards, setCards] = useState<any[]>([]);
+  const [totalCards, setTotalCards] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   
   // Filters State
   const [filterBin, setFilterBin] = useState('');
   const [filterCountry, setFilterCountry] = useState('');
+  const [filterState, setFilterState] = useState('');
+  const [filterCity, setFilterCity] = useState('');
+  const [filterZip, setFilterZip] = useState('');
+  const [filterBase, setFilterBase] = useState('');
 
   const fetchCards = async () => {
     setLoading(true);
@@ -161,12 +135,17 @@ function PurchaseCards() {
       const params = new URLSearchParams();
       if (filterBin) params.append('bin', filterBin);
       if (filterCountry) params.append('country', filterCountry);
+      if (filterState) params.append('state', filterState);
+      if (filterCity) params.append('city', filterCity);
+      if (filterZip) params.append('zip', filterZip);
+      if (filterBase) params.append('base', filterBase);
       
       const res = await fetch(`/api/cards?${params.toString()}`);
       const data = await res.json();
       
       if (data.success) {
         setCards(data.data);
+        setTotalCards(data.total);
       } else {
         console.error("API Error:", data.error);
       }
@@ -225,12 +204,50 @@ function PurchaseCards() {
                 </div>
                 
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">Country</label>
+                  <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">Base / Database</label>
                   <Input 
-                    placeholder="US, UK, CA..." 
-                    value={filterCountry}
-                    onChange={(e) => setFilterCountry(e.target.value)}
+                    placeholder="e.g. APR#02" 
+                    value={filterBase}
+                    onChange={(e) => setFilterBase(e.target.value)}
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">Country</label>
+                    <Input 
+                      placeholder="US, UK" 
+                      value={filterCountry}
+                      onChange={(e) => setFilterCountry(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">State</label>
+                    <Input 
+                      placeholder="NY, TX" 
+                      value={filterState}
+                      onChange={(e) => setFilterState(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">City</label>
+                    <Input 
+                      placeholder="City" 
+                      value={filterCity}
+                      onChange={(e) => setFilterCity(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">Zip Code</label>
+                    <Input 
+                      placeholder="10001" 
+                      value={filterZip}
+                      onChange={(e) => setFilterZip(e.target.value)}
+                    />
+                  </div>
                 </div>
 
                 <div className="pt-2 border-t border-[#2d3748] space-y-3">
@@ -251,7 +268,8 @@ function PurchaseCards() {
           <Card className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <div className="p-4 border-b border-[#2d3748] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#1e293b]">
               <span className="text-sm font-medium text-slate-300">
-                Found <span className="text-white font-bold">{cards.length}</span> results
+                Found <span className="text-white font-bold">{totalCards}</span> results
+                {totalCards > cards.length && <span className="text-slate-500"> (Showing first {cards.length})</span>}
               </span>
               <div className="flex gap-2">
                 <button onClick={fetchCards} className="flex items-center gap-1.5 text-xs bg-[#0f172a] border border-[#2d3748] px-3 py-1.5 rounded hover:bg-[#2d3748] transition-colors text-slate-300">
@@ -291,9 +309,9 @@ function PurchaseCards() {
                       <tr key={card.id} className="hover:bg-[#2d3748]/30 transition-colors group">
                         <td className="px-4 py-3 text-white font-mono font-medium">{card.bin}******</td>
                         <td className="px-4 py-3 text-slate-300 text-xs">{card.type}</td>
-                        <td className="px-4 py-3 text-slate-300 font-mono">{card.exp}</td>
+                        <td className="px-4 py-3 text-emerald-300 font-mono font-medium">{card.exp}</td>
                         <td className="px-4 py-3 text-slate-300">{card.country}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs truncate max-w-[150px]">{card.stateCityZip}</td>
+                        <td className="px-4 py-3 text-slate-400 text-xs truncate max-w-[200px]">{card.stateCityZip}</td>
                         <td className="px-4 py-3 text-blue-400 font-mono text-xs">{card.base}</td>
                         <td className="px-4 py-3 text-right text-emerald-400 font-bold">${card.price}</td>
                         <td className="px-4 py-3 text-center">
@@ -313,46 +331,8 @@ function PurchaseCards() {
   )
 }
 
-function Orders() {
-  return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <PageHeader title="My Orders" />
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="text-xs text-slate-400 bg-[#0f172a] border-b border-[#2d3748]">
-              <tr>
-                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Card Details</th>
-                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Number</th>
-                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Price</th>
-                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Status</th>
-                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Dated</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#2d3748]">
-              <EmptyTableState colSpan={5} message="You haven't purchased any cards yet" />
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function Topup() {
-  return (
-    <div className="space-y-6 lg:space-y-8 max-w-5xl animate-in fade-in duration-300">
-      <PageHeader title="Add Funds" />
-      <Card className="p-6">
-        <h2 className="text-sm font-bold text-white mb-1 uppercase tracking-wider">Fund Wallet</h2>
-        <p className="text-xs text-slate-400 mb-5">Crypto gateways setup is required for mainnet deployment.</p>
-        <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-lg transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98]">
-          Generate Payment Address
-        </button>
-      </Card>
-    </div>
-  );
-}
+function Orders() { return <div className="space-y-6"><PageHeader title="My Orders" /></div>; }
+function Topup() { return <div className="space-y-6"><PageHeader title="Add Funds" /></div>; }
 
 // Layout Wrapper
 const NAVIGATION = [
@@ -366,20 +346,14 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    document.body.style.overflow = sidebarOpen ? 'hidden' : 'unset';
-  }, [sidebarOpen]);
+  useEffect(() => setSidebarOpen(false), [location.pathname]);
+  useEffect(() => { document.body.style.overflow = sidebarOpen ? 'hidden' : 'unset'; }, [sidebarOpen]);
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-300 font-sans flex flex-col md:flex-row selection:bg-blue-500/30">
       <div 
         className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300 ${sidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} 
-        onClick={() => setSidebarOpen(false)} 
-        aria-hidden="true"
+        onClick={() => setSidebarOpen(false)} aria-hidden="true"
       />
 
       <aside className={`fixed md:sticky top-0 left-0 z-50 h-[100dvh] w-[280px] bg-[#1e293b] border-r border-[#2d3748] shadow-2xl md:shadow-none transform transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} flex flex-col`}>
@@ -401,11 +375,7 @@ export default function App() {
             const isActive = location.pathname === item.path;
             const Icon = item.icon;
             return (
-              <Link 
-                key={item.path} 
-                to={item.path} 
-                className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10' : 'text-slate-400 hover:bg-[#2d3748] hover:text-white'}`}
-              >
+              <Link key={item.path} to={item.path} className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10' : 'text-slate-400 hover:bg-[#2d3748] hover:text-white'}`}>
                 <Icon size={18} className={`${isActive ? 'text-white' : 'text-slate-500 group-hover:text-white transition-colors'}`} />
                 {item.name}
               </Link>
@@ -420,14 +390,6 @@ export default function App() {
             <button onClick={() => setSidebarOpen(true)} className="p-2 md:hidden hover:bg-[#2d3748] rounded-lg transition-colors text-slate-300 border border-transparent hover:border-[#3f4b63]">
               <Menu size={20} />
             </button>
-          </div>
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex items-center bg-[#0f172a] rounded-lg p-1 border border-[#2d3748] shadow-inner">
-              <span className="text-sm font-bold text-emerald-400 px-3">$ 0.00</span>
-              <Link to="/topup" className="bg-emerald-600 hover:bg-emerald-500 text-white p-1.5 rounded-md transition-colors shadow-sm">
-                <Plus size={16} />
-              </Link>
-            </div>
           </div>
         </header>
 
