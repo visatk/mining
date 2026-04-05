@@ -12,11 +12,7 @@ const KNOWN_BRANDS = [
   'MASTERCARD', 
   'AMEX', 
   'AMERICAN EXPRESS',
-  'DISCOVER', 
-  'JCB', 
-  'DINERS CLUB', 
-  'UNIONPAY', 
-  'MAESTRO'
+  'DISCOVER'
 ];
 
 // Dynamically generate placeholders for the SQL IN clause (e.g., "?, ?, ?")
