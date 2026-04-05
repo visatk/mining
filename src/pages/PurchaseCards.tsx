@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Filter, Search, RefreshCw, ShoppingCart, CreditCard, X } from 'lucide-react';
+import { Filter, Search, RefreshCw, ShoppingCart, CreditCard, X, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { PageHeader } from '../components/shared/PageHeader';
 import { Card } from '../components/shared/Card';
 import { Input } from '../components/shared/Input';
@@ -17,6 +17,13 @@ interface CardData {
   price: string;
 }
 
+interface PaginationData {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export function PurchaseCards() {
   const [showFilters, setShowFilters] = useState(false);
   const [cards, setCards] = useState<CardData[]>([]);
@@ -25,18 +32,32 @@ export function PurchaseCards() {
   const [filterBin, setFilterBin] = useState('');
   const [filterCountry, setFilterCountry] = useState('');
 
-  const fetchCards = async () => {
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationData>({
+    total: 0,
+    page: 1,
+    limit: 50,
+    totalPages: 1
+  });
+
+  const fetchCards = async (currentPage = page) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (filterBin) params.append('bin', filterBin);
       if (filterCountry) params.append('country', filterCountry);
+      params.append('page', currentPage.toString());
+      params.append('limit', '50');
       
       const res = await fetch(`/api/cards?${params.toString()}`);
       const data = await res.json();
       
       if (data.success) {
         setCards(data.data);
+        if (data.pagination) {
+          setPagination(data.pagination);
+        }
       } else {
         console.error("API Error:", data.error);
       }
@@ -48,11 +69,16 @@ export function PurchaseCards() {
   };
 
   useEffect(() => {
-    fetchCards();
-  }, []);
+    fetchCards(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   const handleSearch = () => {
-    fetchCards();
+    if (page === 1) {
+      fetchCards(1);
+    } else {
+      setPage(1); // Triggers useEffect to fetch page 1
+    }
     if (window.innerWidth < 1024) setShowFilters(false);
   };
 
@@ -121,16 +147,19 @@ export function PurchaseCards() {
           <Card className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <div className="p-4 border-b border-[#2d3748] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#1e293b]">
               <span className="text-sm font-medium text-slate-300">
-                Found <span className="text-white font-bold">{cards.length}</span> results
+                Found <span className="text-white font-bold">{pagination.total}</span> results
               </span>
               <div className="flex gap-2">
-                <button onClick={fetchCards} className="flex items-center gap-1.5 text-xs bg-[#0f172a] border border-[#2d3748] px-3 py-1.5 rounded hover:bg-[#2d3748] transition-colors text-slate-300">
+                <button 
+                  onClick={() => fetchCards(page)} 
+                  className="flex items-center gap-1.5 text-xs bg-[#0f172a] border border-[#2d3748] px-3 py-1.5 rounded hover:bg-[#2d3748] transition-colors text-slate-300"
+                >
                   <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
                 </button>
               </div>
             </div>
             
-            <div className="flex-1 overflow-auto custom-scrollbar relative">
+            <div className="flex-1 overflow-auto custom-scrollbar relative bg-[#0f172a]">
               <table className="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
                 <thead className="text-xs text-slate-400 bg-[#0f172a] sticky top-0 z-10 shadow-sm border-b border-[#2d3748]">
                   <tr>
@@ -157,25 +186,59 @@ export function PurchaseCards() {
                   ) : cards.length === 0 ? (
                     <EmptyTableState colSpan={8} message="No cards match your filter criteria" />
                   ) : (
-                    cards.map((card) => (
-                      <tr key={card.id} className="hover:bg-[#2d3748]/30 transition-colors group">
-                        <td className="px-4 py-3 text-white font-mono font-medium">{card.bin}******</td>
-                        <td className="px-4 py-3 text-slate-300 text-xs">{card.type}</td>
-                        <td className="px-4 py-3 text-slate-300 font-mono">{card.exp}</td>
-                        <td className="px-4 py-3 text-slate-300">{card.country}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs truncate max-w-[150px]">{card.stateCityZip}</td>
-                        <td className="px-4 py-3 text-blue-400 font-mono text-xs">{card.base}</td>
-                        <td className="px-4 py-3 text-right text-emerald-400 font-bold">${card.price}</td>
-                        <td className="px-4 py-3 text-center">
-                          <button className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-1.5 w-full">
-                            <ShoppingCart size={14} /> Buy
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    cards.map((card, idx) => {
+                      // Highlight the random injected row on the first page
+                      const isRandomDrop = String(card.id).startsWith('rnd-');
+                      
+                      return (
+                        <tr key={card.id} className={`hover:bg-[#2d3748]/30 transition-colors group ${isRandomDrop ? 'bg-blue-500/5' : ''}`}>
+                          <td className="px-4 py-3 text-white font-mono font-medium flex items-center gap-2">
+                            {isRandomDrop && <Sparkles size={14} className="text-blue-400" />}
+                            {card.bin}******
+                          </td>
+                          <td className={`px-4 py-3 text-xs ${isRandomDrop ? 'text-blue-300 font-semibold' : 'text-slate-300'}`}>
+                            {card.type}
+                          </td>
+                          <td className="px-4 py-3 text-slate-300 font-mono">{card.exp}</td>
+                          <td className="px-4 py-3 text-slate-300">{card.country}</td>
+                          <td className="px-4 py-3 text-slate-400 text-xs truncate max-w-[150px]">{card.stateCityZip}</td>
+                          <td className="px-4 py-3 text-blue-400 font-mono text-xs">{card.base}</td>
+                          <td className="px-4 py-3 text-right text-emerald-400 font-bold">${card.price}</td>
+                          <td className="px-4 py-3 text-center">
+                            <button className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-1.5 w-full">
+                              <ShoppingCart size={14} /> Buy
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Pagination UI */}
+            <div className="p-4 border-t border-[#2d3748] flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#1e293b]">
+              <div className="text-sm text-slate-400">
+                Showing page <span className="text-white font-medium">{pagination.page}</span> of{' '}
+                <span className="text-white font-medium">{Math.max(1, pagination.totalPages)}</span>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1 || loading}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded bg-[#0f172a] text-slate-300 border border-[#2d3748] hover:bg-[#2d3748] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  <ChevronLeft size={16} /> Prev
+                </button>
+                <button 
+                  onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+                  disabled={page >= pagination.totalPages || loading}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded bg-[#0f172a] text-slate-300 border border-[#2d3748] hover:bg-[#2d3748] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  Next <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
           </Card>
        </div>
