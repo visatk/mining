@@ -5,6 +5,23 @@ import { Env } from '../worker-configuration';
 
 const app = new Hono<{ Bindings: Env }>();
 
+// List of known, valid, and high-value card providers to filter the database.
+// This prevents junk/empty 'brand' records from showing up in the storefront.
+const KNOWN_BRANDS = [
+  'VISA', 
+  'MASTERCARD', 
+  'AMEX', 
+  'AMERICAN EXPRESS',
+  'DISCOVER', 
+  'JCB', 
+  'DINERS CLUB', 
+  'UNIONPAY', 
+  'MAESTRO'
+];
+
+// Dynamically generate placeholders for the SQL IN clause (e.g., "?, ?, ?")
+const brandPlaceholders = KNOWN_BRANDS.map(() => '?').join(', ');
+
 // API Route: Fetch and filter purchase cards from D1 with pagination
 app.get(
   '/api/cards',
@@ -24,8 +41,9 @@ app.get(
     const pageNum = parseInt(page, 10);
     const offset = (pageNum - 1) * limitNum;
 
-    let baseQuery = 'FROM bins WHERE 1=1';
-    const params: (string | number)[] = [];
+    // Base query updated to strictly enforce known card brands using UPPER() for case insensitivity
+    let baseQuery = `FROM bins WHERE UPPER(brand) IN (${brandPlaceholders})`;
+    const params: (string | number)[] = [...KNOWN_BRANDS];
 
     // Apply dynamic filters
     if (bin) {
@@ -64,7 +82,10 @@ app.get(
 
       // 3. Inject a Random BIN for the first row (Featured/Random Drop) if on page 1
       if (pageNum === 1) {
-        const randomBinResult = await c.env.DB.prepare('SELECT * FROM bins ORDER BY RANDOM() LIMIT 1').first();
+        // Ensure the random featured BIN is also selected ONLY from known providers
+        const randomQuery = `SELECT * FROM bins WHERE UPPER(brand) IN (${brandPlaceholders}) ORDER BY RANDOM() LIMIT 1`;
+        const randomBinResult = await c.env.DB.prepare(randomQuery).bind(...KNOWN_BRANDS).first();
+        
         if (randomBinResult) {
           const randomRow = randomBinResult as any;
           mappedCards.unshift({
