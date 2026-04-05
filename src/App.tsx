@@ -1,60 +1,10 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { 
   Menu, Plus, ChevronDown, X, Home, CreditCard, ShoppingCart, 
   Wallet, RefreshCw, AlertTriangle, FileText, Ticket, 
-  Search, Filter, ShieldCheck, Clock, CheckCircle2, Copy, 
-  Bitcoin, DollarSign, QrCode, ArrowUpRight
+  Search, Filter, ShieldCheck, Clock, CheckCircle2
 } from 'lucide-react';
-
-// ==========================================
-// GLOBAL CONTEXT (User & Balance)
-// ==========================================
-
-interface UserState {
-  username: string;
-  balance: number;
-  loading: boolean;
-  refreshUser: () => void;
-  deductBalance: (amount: number) => void;
-}
-
-const UserContext = createContext<UserState>({
-  username: '', balance: 0, loading: true, refreshUser: () => {}, deductBalance: () => {}
-});
-
-const UserProvider = ({ children }: { children: React.ReactNode }) => {
-  const [username, setUsername] = useState('Guest');
-  const [balance, setBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  const fetchUser = async () => {
-    try {
-      const res = await fetch('/api/user');
-      const data = await res.json();
-      if (data.success) {
-        setUsername(data.data.username);
-        setBalance(data.data.balance);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchUser(); }, []);
-
-  const deductBalance = (amount: number) => {
-    setBalance(prev => Math.max(0, prev - amount));
-  };
-
-  return (
-    <UserContext.Provider value={{ username, balance, loading, refreshUser: fetchUser, deductBalance }}>
-      {children}
-    </UserContext.Provider>
-  );
-};
 
 // ==========================================
 // SHARED COMPONENTS
@@ -73,12 +23,12 @@ const Toggle = ({ checked, onChange, label }: { checked: boolean, onChange: (c: 
   </div>
 );
 
-const EmptyTableState = ({ colSpan, message = "No records found", icon: Icon = X }: { colSpan: number, message?: string, icon?: React.ElementType }) => (
+const EmptyTableState = ({ colSpan, message = "No records found" }: { colSpan: number, message?: string }) => (
   <tr>
     <td colSpan={colSpan} className="px-4 py-16 text-center">
       <div className="flex flex-col items-center justify-center">
         <div className="w-12 h-12 bg-[#2d3748] rounded-full flex items-center justify-center mb-3 border border-[#3f4b63]">
-          <Icon size={20} className="text-slate-400" />
+          <X size={20} className="text-slate-400" />
         </div>
         <p className="font-medium text-white">{message}</p>
         <p className="text-xs text-slate-500 mt-1">Try adjusting your filters or search query.</p>
@@ -115,11 +65,10 @@ const Input = ({ icon: Icon, ...props }: React.InputHTMLAttributes<HTMLInputElem
 // ==========================================
 
 function Dashboard() {
-  const { balance, loading } = useContext(UserContext);
-
   return (
     <div className="space-y-6 lg:space-y-8 animate-in fade-in duration-300">
       <PageHeader title="Dashboard" />
+      
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
         <Card className="p-5 lg:p-6 hover:border-slate-600 transition-colors">
           <div className="flex items-center gap-2 text-slate-400 mb-3">
@@ -128,9 +77,7 @@ function Dashboard() {
             </div>
             <span className="text-sm font-semibold uppercase tracking-wider">Balance</span>
           </div>
-          <div className="text-3xl font-bold text-white mb-1">
-            $ {loading ? '...' : balance.toFixed(2)}
-          </div>
+          <div className="text-3xl font-bold text-white mb-1">$ 0.00</div>
           <div className="text-xs text-emerald-400 font-medium flex items-center gap-1">
             <CheckCircle2 size={12} /> Available for purchases
           </div>
@@ -140,11 +87,11 @@ function Dashboard() {
             <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg">
               <ShoppingCart size={20} />
             </div>
-            <span className="text-sm font-semibold uppercase tracking-wider">Total Spent</span>
+            <span className="text-sm font-semibold uppercase tracking-wider">Orders</span>
           </div>
-          <div className="text-3xl font-bold text-white mb-1">$ 0.00</div>
+          <div className="text-3xl font-bold text-white mb-1">0</div>
           <div className="text-xs text-purple-400 font-medium flex items-center gap-1">
-            <Clock size={12} /> Lifetime spending
+            <Clock size={12} /> Total successful transactions
           </div>
         </Card>
       </div>
@@ -163,27 +110,50 @@ function Dashboard() {
                </a>
              ))}
           </div>
+          <div className="pt-2 border-t border-red-500/10">
+            <p className="mb-2">Join official Telegram for updates [NEW LINK]:</p>
+            <a href="https://t.me/elonmoney_bid" target="_blank" rel="noreferrer" className="inline-block bg-[#0f172a] text-red-400 px-3 py-1.5 rounded-md text-xs border border-red-500/20 hover:bg-red-500/10 transition-colors font-mono">
+              https://t.me/elonmoney_bid
+            </a>
+          </div>
+          <p className="text-red-300/80 italic text-xs">All other domains are fake/scam. We do not sell on Telegram or any other social platform!</p>
         </div>
       </Card>
+
+      <div>
+        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <ShieldCheck size={20} className="text-blue-500" /> Platform News & Updates
+        </h2>
+        <div className="space-y-4">
+          <Card className="p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+              <h3 className="text-white font-bold text-base">NEW CC UPDATE! [Shop#1]</h3>
+              <span className="text-xs font-mono bg-[#0f172a] text-blue-400 px-2 py-1 rounded border border-[#2d3748]">Apr 02, 2026 / 08:15 PM</span>
+            </div>
+            <div className="text-sm text-slate-300 space-y-3">
+              <p>GOOD VALID USA & MIX UPDATE! ADDED AROUND <span className="text-emerald-400 font-bold">2000+ CCs</span>.</p>
+              <div className="bg-[#0f172a] p-3 rounded-lg border border-[#2d3748] font-mono text-xs space-y-1">
+                <p className="text-blue-300">APR#02_USA[GREAT]</p>
+                <p className="text-blue-300">APR#02_USA/MIX</p>
+                <p className="text-blue-300">APR#02_MIX[GOOD]</p>
+                <p className="text-blue-300">APR#02_USA[GOOD]</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
 
 function PurchaseCards() {
-  const { balance, deductBalance } = useContext(UserContext);
   const [showFilters, setShowFilters] = useState(false);
   const [cards, setCards] = useState<any[]>([]);
-  const [totalCards, setTotalCards] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  const [purchasing, setPurchasing] = useState<string | null>(null);
   
   // Filters State
   const [filterBin, setFilterBin] = useState('');
   const [filterCountry, setFilterCountry] = useState('');
-  const [filterState, setFilterState] = useState('');
-  const [filterCity, setFilterCity] = useState('');
-  const [filterZip, setFilterZip] = useState('');
-  const [filterBase, setFilterBase] = useState('');
 
   const fetchCards = async () => {
     setLoading(true);
@@ -191,17 +161,14 @@ function PurchaseCards() {
       const params = new URLSearchParams();
       if (filterBin) params.append('bin', filterBin);
       if (filterCountry) params.append('country', filterCountry);
-      if (filterState) params.append('state', filterState);
-      if (filterCity) params.append('city', filterCity);
-      if (filterZip) params.append('zip', filterZip);
-      if (filterBase) params.append('base', filterBase);
       
       const res = await fetch(`/api/cards?${params.toString()}`);
       const data = await res.json();
       
       if (data.success) {
         setCards(data.data);
-        setTotalCards(data.total);
+      } else {
+        console.error("API Error:", data.error);
       }
     } catch (error) {
       console.error("Failed to fetch cards:", error);
@@ -210,40 +177,13 @@ function PurchaseCards() {
     }
   };
 
-  useEffect(() => { fetchCards(); }, []);
+  useEffect(() => {
+    fetchCards();
+  }, []);
 
   const handleSearch = () => {
     fetchCards();
     if (window.innerWidth < 1024) setShowFilters(false);
-  };
-
-  const handleBuy = async (id: string, price: number) => {
-    if (balance < price) {
-      alert("Insufficient funds. Please add balance to topup.");
-      return;
-    }
-    
-    setPurchasing(id);
-    try {
-      const res = await fetch('/api/buy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, price })
-      });
-      const data = await res.json();
-      
-      if (data.success) {
-        deductBalance(price);
-        // Remove card from UI list
-        setCards(cards.filter(c => c.id !== id));
-        setTotalCards(prev => prev - 1);
-        alert("Card purchased successfully! Check My Orders.");
-      }
-    } catch (err) {
-      alert("Error purchasing card.");
-    } finally {
-      setPurchasing(null);
-    }
   };
 
   return (
@@ -285,50 +225,12 @@ function PurchaseCards() {
                 </div>
                 
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">Base / Database</label>
+                  <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">Country</label>
                   <Input 
-                    placeholder="e.g. APR#02" 
-                    value={filterBase}
-                    onChange={(e) => setFilterBase(e.target.value)}
+                    placeholder="US, UK, CA..." 
+                    value={filterCountry}
+                    onChange={(e) => setFilterCountry(e.target.value)}
                   />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">Country</label>
-                    <Input 
-                      placeholder="US, UK" 
-                      value={filterCountry}
-                      onChange={(e) => setFilterCountry(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">State</label>
-                    <Input 
-                      placeholder="NY, TX" 
-                      value={filterState}
-                      onChange={(e) => setFilterState(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">City</label>
-                    <Input 
-                      placeholder="City" 
-                      value={filterCity}
-                      onChange={(e) => setFilterCity(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">Zip Code</label>
-                    <Input 
-                      placeholder="10001" 
-                      value={filterZip}
-                      onChange={(e) => setFilterZip(e.target.value)}
-                    />
-                  </div>
                 </div>
 
                 <div className="pt-2 border-t border-[#2d3748] space-y-3">
@@ -349,7 +251,7 @@ function PurchaseCards() {
           <Card className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <div className="p-4 border-b border-[#2d3748] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#1e293b]">
               <span className="text-sm font-medium text-slate-300">
-                Found <span className="text-white font-bold">{totalCards}</span> results
+                Found <span className="text-white font-bold">{cards.length}</span> results
               </span>
               <div className="flex gap-2">
                 <button onClick={fetchCards} className="flex items-center gap-1.5 text-xs bg-[#0f172a] border border-[#2d3748] px-3 py-1.5 rounded hover:bg-[#2d3748] transition-colors text-slate-300">
@@ -389,19 +291,14 @@ function PurchaseCards() {
                       <tr key={card.id} className="hover:bg-[#2d3748]/30 transition-colors group">
                         <td className="px-4 py-3 text-white font-mono font-medium">{card.bin}******</td>
                         <td className="px-4 py-3 text-slate-300 text-xs">{card.type}</td>
-                        <td className="px-4 py-3 text-emerald-300 font-mono font-medium">{card.exp}</td>
+                        <td className="px-4 py-3 text-slate-300 font-mono">{card.exp}</td>
                         <td className="px-4 py-3 text-slate-300">{card.country}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs truncate max-w-[200px]">{card.stateCityZip}</td>
+                        <td className="px-4 py-3 text-slate-400 text-xs truncate max-w-[150px]">{card.stateCityZip}</td>
                         <td className="px-4 py-3 text-blue-400 font-mono text-xs">{card.base}</td>
-                        <td className="px-4 py-3 text-right text-emerald-400 font-bold">${card.price.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-emerald-400 font-bold">${card.price}</td>
                         <td className="px-4 py-3 text-center">
-                          <button 
-                            onClick={() => handleBuy(card.id, card.price)}
-                            disabled={purchasing === card.id}
-                            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-1.5 w-full"
-                          >
-                            {purchasing === card.id ? <RefreshCw size={14} className="animate-spin" /> : <ShoppingCart size={14} />} 
-                            {purchasing === card.id ? 'Buying' : 'Buy'}
+                          <button className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-1.5 w-full">
+                            <ShoppingCart size={14} /> Buy
                           </button>
                         </td>
                       </tr>
@@ -417,90 +314,23 @@ function PurchaseCards() {
 }
 
 function Orders() {
-  const [orders, setOrders] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/orders');
-      const data = await res.json();
-      if (data.success) {
-        setOrders(data.data);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchOrders(); }, []);
-
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    alert('Copied to clipboard');
-  };
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 h-full flex flex-col">
-      <PageHeader 
-        title="My Orders" 
-        action={
-          <button onClick={fetchOrders} className="flex items-center gap-1.5 text-xs bg-[#1e293b] border border-[#2d3748] px-4 py-2 rounded-lg hover:bg-[#2d3748] transition-colors text-slate-300">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-          </button>
-        }
-      />
-      
-      <Card className="flex-1 flex flex-col min-h-[500px] overflow-hidden">
-        <div className="flex-1 overflow-auto custom-scrollbar relative">
-          <table className="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
-            <thead className="text-xs text-slate-400 bg-[#0f172a] sticky top-0 z-10 shadow-sm border-b border-[#2d3748]">
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <PageHeader title="My Orders" />
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="text-xs text-slate-400 bg-[#0f172a] border-b border-[#2d3748]">
               <tr>
-                <th className="px-4 py-3.5 font-semibold">Order ID</th>
-                <th className="px-4 py-3.5 font-semibold">Date</th>
-                <th className="px-4 py-3.5 font-semibold">Card Details (CC|MM|YY|CVV)</th>
-                <th className="px-4 py-3.5 font-semibold">Type</th>
-                <th className="px-4 py-3.5 font-semibold">Base</th>
-                <th className="px-4 py-3.5 font-semibold text-right">Price</th>
-                <th className="px-4 py-3.5 font-semibold text-center w-24">Action</th>
+                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Card Details</th>
+                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Number</th>
+                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Price</th>
+                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Status</th>
+                <th className="px-5 py-4 font-semibold uppercase tracking-wider">Dated</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#2d3748]">
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center">
-                    <RefreshCw size={24} className="text-blue-500 animate-spin mx-auto mb-3" />
-                    <p className="text-slate-400 text-sm">Loading your orders...</p>
-                  </td>
-                </tr>
-              ) : orders.length === 0 ? (
-                <EmptyTableState colSpan={7} message="You have no orders yet." icon={ShoppingCart} />
-              ) : (
-                orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-[#2d3748]/30 transition-colors">
-                    <td className="px-4 py-3 text-slate-400 font-mono text-xs">{order.id}</td>
-                    <td className="px-4 py-3 text-slate-300 text-xs">{new Date(order.date).toLocaleString()}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-emerald-300 font-mono font-medium tracking-wider">{order.cardDetails}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-400 text-xs">{order.type}</td>
-                    <td className="px-4 py-3 text-blue-400 font-mono text-xs">{order.base}</td>
-                    <td className="px-4 py-3 text-right text-emerald-400 font-bold">${order.price.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-center">
-                      <button 
-                        onClick={() => handleCopy(order.cardDetails)}
-                        className="bg-[#2d3748] hover:bg-[#3f4b63] text-white text-xs px-3 py-1.5 rounded transition-all flex items-center justify-center gap-1.5 w-full"
-                      >
-                        <Copy size={14} /> Copy
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
+              <EmptyTableState colSpan={5} message="You haven't purchased any cards yet" />
             </tbody>
           </table>
         </div>
@@ -510,89 +340,21 @@ function Orders() {
 }
 
 function Topup() {
-  const [selectedMethod, setSelectedMethod] = useState('btc');
-  
-  const methods = [
-    { id: 'btc', name: 'Bitcoin', network: 'BTC Network', icon: Bitcoin, color: 'text-orange-400', address: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh' },
-    { id: 'usdt', name: 'TetherUS', network: 'TRC20', icon: DollarSign, color: 'text-emerald-400', address: 'TXYZ1234567890abcdefghijklmnopqrstuv' },
-    { id: 'ltc', name: 'Litecoin', network: 'LTC Network', icon: DollarSign, color: 'text-slate-300', address: 'ltc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh' },
-  ];
-
-  const activeMethod = methods.find(m => m.id === selectedMethod)!;
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(activeMethod.address);
-    alert('Wallet address copied to clipboard');
-  };
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl mx-auto">
+    <div className="space-y-6 lg:space-y-8 max-w-5xl animate-in fade-in duration-300">
       <PageHeader title="Add Funds" />
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1 space-y-3">
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Select Method</h3>
-          {methods.map(method => {
-            const Icon = method.icon;
-            const isSelected = selectedMethod === method.id;
-            return (
-              <button
-                key={method.id}
-                onClick={() => setSelectedMethod(method.id)}
-                className={`w-full flex items-center gap-3 p-4 rounded-xl border transition-all text-left ${isSelected ? 'bg-blue-600/10 border-blue-500' : 'bg-[#1e293b] border-[#2d3748] hover:border-[#3f4b63]'}`}
-              >
-                <div className={`p-2 rounded-lg bg-[#0f172a] ${method.color}`}>
-                  <Icon size={20} />
-                </div>
-                <div>
-                  <div className="font-bold text-white">{method.name}</div>
-                  <div className="text-xs text-slate-400">{method.network}</div>
-                </div>
-                {isSelected && <CheckCircle2 size={18} className="ml-auto text-blue-500" />}
-              </button>
-            )
-          })}
-        </div>
-
-        <Card className="md:col-span-2 p-6 md:p-8 flex flex-col items-center justify-center border-[#2d3748]">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-white mb-2">Deposit {activeMethod.name}</h2>
-            <p className="text-slate-400 text-sm">Send any amount to the address below. Your balance will be credited automatically after 1 network confirmation.</p>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl mb-8">
-            <QrCode size={160} className="text-black" />
-          </div>
-
-          <div className="w-full max-w-md space-y-2">
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider pl-1">Deposit Address ({activeMethod.network})</label>
-            <div className="flex gap-2">
-              <input 
-                readOnly 
-                value={activeMethod.address} 
-                className="flex-1 bg-[#0f172a] border border-[#2d3748] rounded-lg px-4 py-3 text-sm text-white font-mono focus:outline-none"
-              />
-              <button 
-                onClick={handleCopy}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-3 rounded-lg transition-colors flex items-center gap-2 font-medium shrink-0"
-              >
-                <Copy size={16} /> Copy
-              </button>
-            </div>
-            <p className="text-xs text-amber-400/80 mt-3 text-center flex items-center justify-center gap-1.5">
-              <AlertTriangle size={12} /> Minimum deposit: $5.00 equivalent
-            </p>
-          </div>
-        </Card>
-      </div>
+      <Card className="p-6">
+        <h2 className="text-sm font-bold text-white mb-1 uppercase tracking-wider">Fund Wallet</h2>
+        <p className="text-xs text-slate-400 mb-5">Crypto gateways setup is required for mainnet deployment.</p>
+        <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-lg transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98]">
+          Generate Payment Address
+        </button>
+      </Card>
     </div>
   );
 }
 
-// ==========================================
-// LAYOUT & APP ROOT
-// ==========================================
-
+// Layout Wrapper
 const NAVIGATION = [
   { name: 'Dashboard', path: '/', icon: Home },
   { name: 'Purchase Cards', path: '/purchase-cards', icon: CreditCard },
@@ -600,19 +362,24 @@ const NAVIGATION = [
   { name: 'Add Funds', path: '/topup', icon: Wallet },
 ];
 
-function MainLayout() {
+export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
-  const { username, balance, loading } = useContext(UserContext);
 
-  useEffect(() => setSidebarOpen(false), [location.pathname]);
-  useEffect(() => { document.body.style.overflow = sidebarOpen ? 'hidden' : 'unset'; }, [sidebarOpen]);
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = sidebarOpen ? 'hidden' : 'unset';
+  }, [sidebarOpen]);
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-300 font-sans flex flex-col md:flex-row selection:bg-blue-500/30">
       <div 
         className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300 ${sidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} 
-        onClick={() => setSidebarOpen(false)} aria-hidden="true"
+        onClick={() => setSidebarOpen(false)} 
+        aria-hidden="true"
       />
 
       <aside className={`fixed md:sticky top-0 left-0 z-50 h-[100dvh] w-[280px] bg-[#1e293b] border-r border-[#2d3748] shadow-2xl md:shadow-none transform transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} flex flex-col`}>
@@ -634,7 +401,11 @@ function MainLayout() {
             const isActive = location.pathname === item.path;
             const Icon = item.icon;
             return (
-              <Link key={item.path} to={item.path} className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10' : 'text-slate-400 hover:bg-[#2d3748] hover:text-white'}`}>
+              <Link 
+                key={item.path} 
+                to={item.path} 
+                className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10' : 'text-slate-400 hover:bg-[#2d3748] hover:text-white'}`}
+              >
                 <Icon size={18} className={`${isActive ? 'text-white' : 'text-slate-500 group-hover:text-white transition-colors'}`} />
                 {item.name}
               </Link>
@@ -650,15 +421,12 @@ function MainLayout() {
               <Menu size={20} />
             </button>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 bg-[#0f172a] border border-[#2d3748] px-4 py-1.5 rounded-full">
-              <Wallet size={14} className="text-emerald-400" />
-              <span className="text-sm font-bold text-white">${loading ? '...' : balance.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-sm border border-blue-500/30">
-                {username ? username.charAt(0).toUpperCase() : 'U'}
-              </div>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="flex items-center bg-[#0f172a] rounded-lg p-1 border border-[#2d3748] shadow-inner">
+              <span className="text-sm font-bold text-emerald-400 px-3">$ 0.00</span>
+              <Link to="/topup" className="bg-emerald-600 hover:bg-emerald-500 text-white p-1.5 rounded-md transition-colors shadow-sm">
+                <Plus size={16} />
+              </Link>
             </div>
           </div>
         </header>
@@ -673,13 +441,5 @@ function MainLayout() {
         </main>
       </div>
     </div>
-  );
-}
-
-export default function App() {
-  return (
-    <UserProvider>
-      <MainLayout />
-    </UserProvider>
   );
 }
