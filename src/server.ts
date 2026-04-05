@@ -13,6 +13,39 @@ export interface Env {
 type Variables = { user: { id: string; username: string } };
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
+// --- SELF-HEALING DATABASE ---
+// Automatically creates tables if they don't exist so you never get a 500 error
+const ensureDB = async (db: D1Database) => {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      balance REAL DEFAULT 50.00,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS orders (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      item_reference TEXT NOT NULL,
+      card_details TEXT NOT NULL,
+      amount REAL NOT NULL,
+      status TEXT DEFAULT 'COMPLETED',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS bins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bin TEXT,
+      brand TEXT,
+      type TEXT,
+      category TEXT,
+      iso_code_2 TEXT,
+      country_name TEXT
+    );
+  `);
+};
+
+// Crypto Hash Helper
 const hashPassword = async (password: string) => {
   const msgUint8 = new TextEncoder().encode(password);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
@@ -20,22 +53,42 @@ const hashPassword = async (password: string) => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
+// Cookie Setter Helper (fixes localhost vs HTTPS issues)
+const setAuthCookie = (c: any, token: string) => {
+  const isSecure = c.req.url.startsWith('https://');
+  setCookie(c, 'auth_token', token, { 
+    httpOnly: true, 
+    secure: isSecure, // Dynamically allows HTTP in dev, enforces HTTPS in prod
+    sameSite: 'Lax', 
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7 // 1 week
+  });
+};
+
+// --- AUTH MIDDLEWARE ---
 const protect = createMiddleware<{ Bindings: Env; Variables: Variables }>(async (c, next) => {
   const token = getCookie(c, 'auth_token');
-  if (!token) return c.json({ success: false, error: 'Unauthorized' }, 401);
+  if (!token) return c.json({ success: false, error: 'Unauthorized - Missing Cookie' }, 401);
   try {
     const payload = await verify(token, c.env.JWT_SECRET || 'fallback_secret');
     c.set('user', { id: payload.id as string, username: payload.username as string });
     await next();
   } catch (err) {
-    deleteCookie(c, 'auth_token', { path: '/' });
+    deleteCookie(c, 'auth_token', { path: '/', secure: c.req.url.startsWith('https://') });
     return c.json({ success: false, error: 'Session Expired' }, 401);
   }
 });
 
 // --- AUTH ROUTES ---
-app.post('/api/auth/register', zValidator('json', z.object({ username: z.string().min(3), password: z.string().min(6) })), async (c) => {
+const authSchema = z.object({ username: z.string().min(3), password: z.string().min(6) });
+const handleValidation = (result: any, c: any) => {
+  if (!result.success) return c.json({ success: false, error: 'Username (>3) or Password (>6) too short.' }, 400);
+};
+
+app.post('/api/auth/register', zValidator('json', authSchema, handleValidation), async (c) => {
   const { username, password } = c.req.valid('json');
+  await ensureDB(c.env.DB);
+
   try {
     const existing = await c.env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first();
     if (existing) return c.json({ success: false, error: 'Username taken' }, 400);
@@ -44,35 +97,46 @@ app.post('/api/auth/register', zValidator('json', z.object({ username: z.string(
     await c.env.DB.prepare('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)')
       .bind(id, username, await hashPassword(password)).run();
 
-    const token = await sign({ id, username, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 }, c.env.JWT_SECRET || 'fallback_secret');
-    setCookie(c, 'auth_token', token, { httpOnly: true, secure: true, sameSite: 'Strict', path: '/' });
+    const token = await sign({ id, username, exp: Math.floor(Date.now() / 1000) + 604800 }, c.env.JWT_SECRET || 'fallback_secret');
+    setAuthCookie(c, token);
     return c.json({ success: true, user: { id, username, balance: 50.00 } });
-  } catch (err: any) { return c.json({ success: false, error: err.message }, 500); }
+  } catch (err: any) { 
+    return c.json({ success: false, error: err.message }, 500); 
+  }
 });
 
-app.post('/api/auth/login', zValidator('json', z.object({ username: z.string(), password: z.string() })), async (c) => {
+app.post('/api/auth/login', zValidator('json', authSchema, handleValidation), async (c) => {
   const { username, password } = c.req.valid('json');
-  const user = await c.env.DB.prepare('SELECT id, username, balance FROM users WHERE username = ? AND password_hash = ?')
-    .bind(username, await hashPassword(password)).first();
+  await ensureDB(c.env.DB);
 
-  if (!user) return c.json({ success: false, error: 'Invalid credentials' }, 401);
-  const token = await sign({ id: user.id as string, username: user.username as string, exp: Math.floor(Date.now() / 1000) + 604800 }, c.env.JWT_SECRET || 'fallback_secret');
-  setCookie(c, 'auth_token', token, { httpOnly: true, secure: true, sameSite: 'Strict', path: '/' });
-  return c.json({ success: true, user });
+  try {
+    const user = await c.env.DB.prepare('SELECT id, username, balance FROM users WHERE username = ? AND password_hash = ?')
+      .bind(username, await hashPassword(password)).first();
+
+    if (!user) return c.json({ success: false, error: 'Invalid credentials' }, 401);
+
+    const token = await sign({ id: user.id as string, username: user.username as string, exp: Math.floor(Date.now() / 1000) + 604800 }, c.env.JWT_SECRET || 'fallback_secret');
+    setAuthCookie(c, token);
+    return c.json({ success: true, user });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500); 
+  }
 });
 
 app.post('/api/auth/logout', (c) => {
-  deleteCookie(c, 'auth_token', { path: '/' });
+  deleteCookie(c, 'auth_token', { path: '/', secure: c.req.url.startsWith('https://') });
   return c.json({ success: true });
 });
 
 app.get('/api/auth/me', protect, async (c) => {
+  await ensureDB(c.env.DB);
   const user = await c.env.DB.prepare('SELECT id, username, balance FROM users WHERE id = ?').bind(c.get('user').id).first();
   return user ? c.json({ success: true, user }) : c.json({ success: false }, 401);
 });
 
 // --- SHOP & TRANSACTION ROUTES ---
 app.get('/api/cards', protect, async (c) => {
+  await ensureDB(c.env.DB);
   const bin = c.req.query('bin');
   const country = c.req.query('country');
   const limit = parseInt(c.req.query('limit') || '50', 10);
@@ -91,9 +155,9 @@ app.get('/api/cards', protect, async (c) => {
 
     const BASES = ['APR#02_USA', 'MAY#01_MIX', 'JUN#12_UK', 'APR#15_CA'];
     const mapped = results.map((row: any) => ({
-      id: row.id,
-      bin: row.bin,
-      type: `${row.brand || 'UNKNOWN'} / ${row.type || 'CREDIT'} / ${row.category || 'CLASSIC'}`,
+      id: row.id || crypto.randomUUID(), // Fallback ID if bins is empty
+      bin: row.bin || '414720',
+      type: `${row.brand || 'VISA'} / ${row.type || 'CREDIT'} / ${row.category || 'CLASSIC'}`,
       exp: `${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}/${Math.floor(Math.random() * 5) + 26}`,
       country: row.iso_code_2 || 'US',
       stateCityZip: `${row.country_name || 'USA'} / - / -`,
@@ -101,8 +165,10 @@ app.get('/api/cards', protect, async (c) => {
       price: (Math.random() * (15 - 8) + 8).toFixed(2), 
     }));
 
-    return c.json({ success: true, data: mapped, pagination: { total, totalPages: Math.ceil(total / limit) } });
-  } catch (err: any) { return c.json({ success: false, error: err.message }, 500); }
+    return c.json({ success: true, data: mapped, pagination: { total, totalPages: Math.max(1, Math.ceil(total / limit)) } });
+  } catch (err: any) { 
+    return c.json({ success: false, error: err.message }, 500); 
+  }
 });
 
 app.post('/api/buy', protect, zValidator('json', z.object({ card: z.any() })), async (c) => {
@@ -111,17 +177,12 @@ app.post('/api/buy', protect, zValidator('json', z.object({ card: z.any() })), a
   const price = parseFloat(card.price);
   const db = c.env.DB;
 
-  // 1. Fetch current user balance
   const dbUser = await db.prepare('SELECT balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
-  if (!dbUser || dbUser.balance < price) {
-    return c.json({ success: false, error: 'Insufficient funds' }, 400);
-  }
+  if (!dbUser || dbUser.balance < price) return c.json({ success: false, error: 'Insufficient funds' }, 400);
 
-  // Generate a mock full CC for the order history
   const fullCC = `${card.bin}${Math.floor(1000000000 + Math.random() * 9000000000)}|${card.exp.replace('/', '|')}|${Math.floor(100 + Math.random() * 899)}`;
   const orderId = `ORD-${crypto.randomUUID().split('-')[0].toUpperCase()}`;
 
-  // 2. Perform Transaction (Deduct balance & Create order in batch)
   try {
     await db.batch([
       db.prepare('UPDATE users SET balance = balance - ? WHERE id = ?').bind(price, user.id),
@@ -135,6 +196,7 @@ app.post('/api/buy', protect, zValidator('json', z.object({ card: z.any() })), a
 });
 
 app.get('/api/orders', protect, async (c) => {
+  await ensureDB(c.env.DB);
   const { results } = await c.env.DB.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC').bind(c.get('user').id).all();
   return c.json({ success: true, orders: results });
 });
