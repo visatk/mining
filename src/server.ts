@@ -46,8 +46,8 @@ app.get(
       const countResult = await c.env.DB.prepare(countQuery).bind(...params).first();
       const total = countResult ? Number((countResult as any).total) : 0;
 
-      // 2. Fetch paginated records, ordered deterministically to prevent random shifting
-      const query = `SELECT * ${baseQuery} ORDER BY bin ASC LIMIT ? OFFSET ?`;
+      // 2. Fetch paginated records, ordered RANDOMLY to keep the storefront fresh
+      const query = `SELECT * ${baseQuery} ORDER BY RANDOM() LIMIT ? OFFSET ?`;
       const { results } = await c.env.DB.prepare(query)
         .bind(...params, limitNum, offset)
         .all();
