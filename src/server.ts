@@ -5,19 +5,6 @@ import { Env } from '../worker-configuration';
 
 const app = new Hono<{ Bindings: Env }>();
 
-// List of known, valid, and high-value card providers to filter the database.
-// This prevents junk/empty 'brand' records from showing up in the storefront.
-const KNOWN_BRANDS = [
-  'VISA', 
-  'MASTERCARD', 
-  'AMEX', 
-  'AMERICAN EXPRESS',
-  'DISCOVER'
-];
-
-// Dynamically generate placeholders for the SQL IN clause (e.g., "?, ?, ?")
-const brandPlaceholders = KNOWN_BRANDS.map(() => '?').join(', ');
-
 // API Route: Fetch and filter purchase cards from D1 with pagination
 app.get(
   '/api/cards',
@@ -37,9 +24,10 @@ app.get(
     const pageNum = parseInt(page, 10);
     const offset = (pageNum - 1) * limitNum;
 
-    // Base query updated to strictly enforce known card brands using UPPER() for case insensitivity
-    let baseQuery = `FROM bins WHERE UPPER(brand) IN (${brandPlaceholders})`;
-    const params: (string | number)[] = [...KNOWN_BRANDS];
+    // Base query strictly enforces Major Industry Identifier (MII) starting digits
+    // 3 = Amex/Diners, 4 = Visa, 5 = Mastercard, 6 = Discover/UnionPay
+    let baseQuery = `FROM bins WHERE SUBSTR(bin, 1, 1) IN ('3', '4', '5', '6')`;
+    const params: (string | number)[] = [];
 
     // Apply dynamic filters
     if (bin) {
@@ -58,8 +46,8 @@ app.get(
       const countResult = await c.env.DB.prepare(countQuery).bind(...params).first();
       const total = countResult ? Number((countResult as any).total) : 0;
 
-      // 2. Fetch paginated records
-      const query = `SELECT * ${baseQuery} LIMIT ? OFFSET ?`;
+      // 2. Fetch paginated records, ordered deterministically to prevent random shifting
+      const query = `SELECT * ${baseQuery} ORDER BY bin ASC LIMIT ? OFFSET ?`;
       const { results } = await c.env.DB.prepare(query)
         .bind(...params, limitNum, offset)
         .all();
@@ -75,27 +63,6 @@ app.get(
         base: 'APR#02_USA',
         price: (Math.random() * 20 + 10).toFixed(2), 
       }));
-
-      // 3. Inject a Random BIN for the first row (Featured/Random Drop) if on page 1
-      if (pageNum === 1) {
-        // Ensure the random featured BIN is also selected ONLY from known providers
-        const randomQuery = `SELECT * FROM bins WHERE UPPER(brand) IN (${brandPlaceholders}) ORDER BY RANDOM() LIMIT 1`;
-        const randomBinResult = await c.env.DB.prepare(randomQuery).bind(...KNOWN_BRANDS).first();
-        
-        if (randomBinResult) {
-          const randomRow = randomBinResult as any;
-          mappedCards.unshift({
-            id: `rnd-${randomRow.id}-${Date.now()}`,
-            bin: randomRow.bin,
-            type: `${randomRow.brand || 'UNKNOWN'} / ${randomRow.type || 'CREDIT'} / SPECIAL`,
-            exp: `${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}/${Math.floor(Math.random() * 5) + 26}`,
-            country: randomRow.iso_code_2 || 'US',
-            stateCityZip: `${randomRow.country_name || 'United States'} (FEATURED DROP)`,
-            base: 'RANDOM_DROP',
-            price: (Math.random() * 30 + 15).toFixed(2),
-          });
-        }
-      }
 
       return c.json({ 
         success: true, 
