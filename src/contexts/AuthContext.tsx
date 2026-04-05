@@ -1,16 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-interface User {
-  id: string;
-  username: string;
-  balance: number;
-}
-
+interface User { id: string; username: string; balance: number; }
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   checkAuth: () => Promise<void>;
   logout: () => Promise<void>;
+  updateBalance: (newBalance: number) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,11 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/auth/me');
       const data = await res.json();
-      if (data.success) {
-        setUser(data.user);
-      } else {
-        setUser(null);
-      }
+      setUser(data.success ? data.user : null);
     } catch {
       setUser(null);
     } finally {
@@ -40,12 +32,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  const updateBalance = (newBalance: number) => {
+    if (user) setUser({ ...user, balance: newBalance });
+  };
+
+  useEffect(() => { checkAuth(); }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, checkAuth, logout }}>
+    <AuthContext.Provider value={{ user, loading, checkAuth, logout, updateBalance }}>
       {children}
     </AuthContext.Provider>
   );
