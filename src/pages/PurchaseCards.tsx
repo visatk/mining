@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Filter, Search, RefreshCw, ShoppingCart, CreditCard, X, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { Filter, Search, RefreshCw, ShoppingCart, CreditCard, X, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { PageHeader } from '../components/shared/PageHeader';
 import { Card } from '../components/shared/Card';
 import { Input } from '../components/shared/Input';
@@ -9,7 +9,7 @@ import { EmptyTableState } from '../components/shared/EmptyTableState';
 interface CardData {
   id: string | number;
   bin: string;
-  type: string;
+  type: string; // Will be split visually
   exp: string;
   country: string;
   stateCityZip: string;
@@ -32,14 +32,8 @@ export function PurchaseCards() {
   const [filterBin, setFilterBin] = useState('');
   const [filterCountry, setFilterCountry] = useState('');
 
-  // Pagination State
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState<PaginationData>({
-    total: 0,
-    page: 1,
-    limit: 50,
-    totalPages: 1
-  });
+  const [pagination, setPagination] = useState<PaginationData>({ total: 0, page: 1, limit: 50, totalPages: 1 });
 
   const fetchCards = async (currentPage = page) => {
     setLoading(true);
@@ -55,11 +49,7 @@ export function PurchaseCards() {
       
       if (data.success) {
         setCards(data.data);
-        if (data.pagination) {
-          setPagination(data.pagination);
-        }
-      } else {
-        console.error("API Error:", data.error);
+        if (data.pagination) setPagination(data.pagination);
       }
     } catch (error) {
       console.error("Failed to fetch cards:", error);
@@ -74,169 +64,154 @@ export function PurchaseCards() {
   }, [page]);
 
   const handleSearch = () => {
-    if (page === 1) {
-      fetchCards(1);
-    } else {
-      setPage(1); // Triggers useEffect to fetch page 1
-    }
+    if (page === 1) fetchCards(1);
+    else setPage(1);
     if (window.innerWidth < 1024) setShowFilters(false);
   };
 
+  // Helper to render beautiful badges for the "Type" string (e.g. "VISA / CREDIT / CLASSIC")
+  const renderTypeBadges = (typeStr: string) => {
+    const parts = typeStr.split(' / ').map(p => p.trim());
+    return (
+      <div className="flex gap-1.5 items-center">
+        {parts[0] && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider">{parts[0]}</span>}
+        {parts[1] && <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider">{parts[1]}</span>}
+        {parts[2] && <span className="bg-slate-700 text-slate-300 border border-slate-600 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider">{parts[2]}</span>}
+      </div>
+    );
+  };
+
   return (
-    <div className="h-[calc(100vh-120px)] flex flex-col space-y-4 animate-in fade-in duration-300">
+    <div className="h-[calc(100vh-100px)] flex flex-col space-y-4 animate-in fade-in duration-500">
        <PageHeader 
-          title="Purchase Cards" 
+          title="Inventory" 
           action={
             <button 
               onClick={() => setShowFilters(!showFilters)}
-              className="lg:hidden flex items-center gap-2 bg-[#1e293b] border border-[#2d3748] px-4 py-2 rounded-lg text-sm text-white hover:bg-[#2d3748] transition-colors"
+              className="lg:hidden flex items-center gap-2 bg-[#1e293b] border border-[#334155] px-4 py-2 rounded-xl text-sm text-white hover:bg-[#334155] transition-all"
             >
               <Filter size={16} /> Filters
             </button>
           }
         />
        
-       <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
+       <div className="flex flex-col lg:flex-row gap-5 flex-1 min-h-0">
           <Card className={`w-full lg:w-72 flex-shrink-0 flex flex-col h-fit lg:h-full overflow-y-auto custom-scrollbar ${showFilters ? 'block' : 'hidden lg:flex'}`}>
-            <div className="p-4 border-b border-[#2d3748] flex justify-between items-center sticky top-0 bg-[#1e293b] z-10 rounded-t-xl">
+            <div className="p-5 border-b border-[#1e293b] flex justify-between items-center sticky top-0 bg-[#0f172a]/95 backdrop-blur z-10 rounded-t-xl">
               <h3 className="font-bold text-white flex items-center gap-2">
-                <Filter size={18} className="text-blue-500" /> Card Filters
+                <Filter size={18} className="text-blue-500" /> Database Filters
               </h3>
-              <button onClick={() => setShowFilters(false)} className="lg:hidden text-slate-400 hover:text-white">
-                <X size={18} />
+              <button onClick={() => setShowFilters(false)} className="lg:hidden text-slate-400 hover:text-white bg-[#1e293b] p-1 rounded-md">
+                <X size={16} />
               </button>
             </div>
             
-            <div className="p-4 space-y-5">
+            <div className="p-5 space-y-6">
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">BIN / IIN</label>
-                  <Input 
-                    placeholder="e.g. 414720" 
-                    maxLength={6} 
-                    icon={CreditCard} 
-                    value={filterBin}
-                    onChange={(e) => setFilterBin(e.target.value)}
-                  />
+                  <label className="text-[11px] font-bold text-slate-500 mb-2 block uppercase tracking-widest">BIN / IIN</label>
+                  <Input placeholder="e.g. 414720" maxLength={6} icon={CreditCard} value={filterBin} onChange={(e) => setFilterBin(e.target.value)} />
                 </div>
-                
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 mb-1.5 block uppercase tracking-wider">Country</label>
-                  <Input 
-                    placeholder="US, UK, CA..." 
-                    value={filterCountry}
-                    onChange={(e) => setFilterCountry(e.target.value)}
-                  />
+                  <label className="text-[11px] font-bold text-slate-500 mb-2 block uppercase tracking-widest">Country ISO</label>
+                  <Input placeholder="US, UK, CA..." value={filterCountry} onChange={(e) => setFilterCountry(e.target.value)} />
                 </div>
-
-                <div className="pt-2 border-t border-[#2d3748] space-y-3">
+                <div className="pt-4 border-t border-[#1e293b] space-y-4">
                   <Toggle checked={true} onChange={() => {}} label="Include Refunds" />
-                  <Toggle checked={false} onChange={() => {}} label="Sniffed CVV" />
+                  <Toggle checked={false} onChange={() => {}} label="Sniffed CVV Only" />
                 </div>
               </div>
-
               <button 
                 onClick={handleSearch}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98] flex items-center justify-center gap-2"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98] flex items-center justify-center gap-2"
               >
-                <Search size={16} /> Search Cards
+                <Search size={16} /> Query Database
               </button>
             </div>
           </Card>
 
-          <Card className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <div className="p-4 border-b border-[#2d3748] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#1e293b]">
-              <span className="text-sm font-medium text-slate-300">
-                Found <span className="text-white font-bold">{pagination.total}</span> results
+          <Card className="flex-1 flex flex-col min-w-0 overflow-hidden border-[#1e293b]">
+            <div className="p-4 border-b border-[#1e293b] flex justify-between items-center bg-[#1e293b]/20">
+              <span className="text-sm text-slate-400">
+                Found <span className="text-white font-bold bg-[#1e293b] px-2 py-0.5 rounded border border-[#334155] mx-1">{pagination.total}</span> records
               </span>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => fetchCards(page)} 
-                  className="flex items-center gap-1.5 text-xs bg-[#0f172a] border border-[#2d3748] px-3 py-1.5 rounded hover:bg-[#2d3748] transition-colors text-slate-300"
-                >
-                  <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-                </button>
-              </div>
+              <button onClick={() => fetchCards(page)} className="flex items-center gap-2 text-xs font-semibold bg-[#1e293b] border border-[#334155] px-4 py-2 rounded-lg hover:bg-[#334155] transition-colors text-white">
+                <RefreshCw size={14} className={loading ? 'animate-spin text-blue-400' : 'text-blue-400'} /> Sync
+              </button>
             </div>
             
-            <div className="flex-1 overflow-auto custom-scrollbar relative bg-[#0f172a]">
-              <table className="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
-                <thead className="text-xs text-slate-400 bg-[#0f172a] sticky top-0 z-10 shadow-sm border-b border-[#2d3748]">
+            <div className="flex-1 overflow-auto custom-scrollbar relative bg-[#0b1120]">
+              <table className="w-full text-left text-sm whitespace-nowrap min-w-[900px]">
+                <thead className="text-[11px] uppercase tracking-wider text-slate-500 bg-[#0f172a] sticky top-0 z-10 shadow-sm border-b border-[#1e293b]">
                   <tr>
-                    <th className="px-4 py-3.5 font-semibold">BIN</th>
-                    <th className="px-4 py-3.5 font-semibold">Type/Class</th>
-                    <th className="px-4 py-3.5 font-semibold">Exp</th>
-                    <th className="px-4 py-3.5 font-semibold">Country</th>
-                    <th className="px-4 py-3.5 font-semibold">State/City/Zip</th>
-                    <th className="px-4 py-3.5 font-semibold">Base</th>
-                    <th className="px-4 py-3.5 font-semibold text-right">Price</th>
-                    <th className="px-4 py-3.5 font-semibold text-center w-24">Action</th>
+                    <th className="px-5 py-4 font-bold">BIN Identity</th>
+                    <th className="px-5 py-4 font-bold">Details</th>
+                    <th className="px-5 py-4 font-bold">Exp</th>
+                    <th className="px-5 py-4 font-bold">Location</th>
+                    <th className="px-5 py-4 font-bold">Base Info</th>
+                    <th className="px-5 py-4 font-bold text-right">Price</th>
+                    <th className="px-5 py-4 font-bold text-center w-28">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#2d3748]">
+                <tbody className="divide-y divide-[#1e293b]">
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-16 text-center">
-                        <div className="flex flex-col items-center justify-center space-y-3">
-                          <RefreshCw size={24} className="text-blue-500 animate-spin" />
-                          <p className="text-slate-400 text-sm font-medium">Querying secure database...</p>
+                      <td colSpan={7} className="px-4 py-24 text-center">
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                          <RefreshCw size={28} className="text-blue-500 animate-spin" />
+                          <p className="text-slate-400 text-sm font-medium animate-pulse">Decrypting secure database...</p>
                         </div>
                       </td>
                     </tr>
                   ) : cards.length === 0 ? (
-                    <EmptyTableState colSpan={8} message="No cards match your filter criteria" />
+                    <EmptyTableState colSpan={7} message="No records found in database" />
                   ) : (
-                    cards.map((card, idx) => {
-                      // Highlight the random injected row on the first page
-                      const isRandomDrop = String(card.id).startsWith('rnd-');
-                      
-                      return (
-                        <tr key={card.id} className={`hover:bg-[#2d3748]/30 transition-colors group ${isRandomDrop ? 'bg-blue-500/5' : ''}`}>
-                          <td className="px-4 py-3 text-white font-mono font-medium flex items-center gap-2">
-                            {isRandomDrop && <Sparkles size={14} className="text-blue-400" />}
-                            {card.bin}******
-                          </td>
-                          <td className={`px-4 py-3 text-xs ${isRandomDrop ? 'text-blue-300 font-semibold' : 'text-slate-300'}`}>
-                            {card.type}
-                          </td>
-                          <td className="px-4 py-3 text-slate-300 font-mono">{card.exp}</td>
-                          <td className="px-4 py-3 text-slate-300">{card.country}</td>
-                          <td className="px-4 py-3 text-slate-400 text-xs truncate max-w-[150px]">{card.stateCityZip}</td>
-                          <td className="px-4 py-3 text-blue-400 font-mono text-xs">{card.base}</td>
-                          <td className="px-4 py-3 text-right text-emerald-400 font-bold">${card.price}</td>
-                          <td className="px-4 py-3 text-center">
-                            <button className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-1.5 w-full">
-                              <ShoppingCart size={14} /> Buy
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
+                    cards.map((card) => (
+                      <tr key={card.id} className="hover:bg-[#1e293b]/50 transition-colors group">
+                        <td className="px-5 py-3.5 text-white font-mono font-medium flex items-center gap-2">
+                          {card.bin}<span className="text-slate-600">******</span>
+                        </td>
+                        <td className="px-5 py-3.5">{renderTypeBadges(card.type)}</td>
+                        <td className="px-5 py-3.5 text-slate-300 font-mono text-xs">{card.exp}</td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex flex-col">
+                            <span className="text-white font-medium">{card.country}</span>
+                            <span className="text-[10px] text-slate-500 truncate max-w-[150px]">{card.stateCityZip}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5">
+                           <span className="bg-[#1e293b] text-slate-300 px-2 py-1 rounded text-[10px] font-mono border border-[#334155]">{card.base}</span>
+                        </td>
+                        <td className="px-5 py-3.5 text-right text-emerald-400 font-bold text-base">${card.price}</td>
+                        <td className="px-5 py-3.5 text-center">
+                          <button className="bg-transparent border border-blue-500 text-blue-400 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600 text-xs font-bold px-4 py-2 rounded-lg transition-all active:scale-95 flex items-center justify-center gap-2 w-full">
+                            <ShoppingCart size={14} /> Buy
+                          </button>
+                        </td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
             </div>
 
             {/* Pagination UI */}
-            <div className="p-4 border-t border-[#2d3748] flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#1e293b]">
-              <div className="text-sm text-slate-400">
-                Showing page <span className="text-white font-medium">{pagination.page}</span> of{' '}
-                <span className="text-white font-medium">{Math.max(1, pagination.totalPages)}</span>
+            <div className="p-4 border-t border-[#1e293b] flex items-center justify-between bg-[#0f172a]">
+              <div className="text-sm text-slate-500 font-medium">
+                Page <span className="text-white">{pagination.page}</span> / {Math.max(1, pagination.totalPages)}
               </div>
               <div className="flex gap-2">
                 <button 
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1 || loading}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded bg-[#0f172a] text-slate-300 border border-[#2d3748] hover:bg-[#2d3748] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1 || loading}
+                  className="p-2 rounded-lg bg-[#1e293b] text-slate-300 border border-[#334155] hover:bg-[#334155] disabled:opacity-50 transition-colors"
                 >
-                  <ChevronLeft size={16} /> Prev
+                  <ChevronLeft size={16} />
                 </button>
                 <button 
-                  onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
-                  disabled={page >= pagination.totalPages || loading}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded bg-[#0f172a] text-slate-300 border border-[#2d3748] hover:bg-[#2d3748] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                  onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))} disabled={page >= pagination.totalPages || loading}
+                  className="p-2 rounded-lg bg-[#1e293b] text-slate-300 border border-[#334155] hover:bg-[#334155] disabled:opacity-50 transition-colors"
                 >
-                  Next <ChevronRight size={16} />
+                  <ChevronRight size={16} />
                 </button>
               </div>
             </div>
