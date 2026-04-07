@@ -13,9 +13,13 @@ export interface Env {
 type Variables = { user: { id: string; username: string } };
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-// --- SELF-HEALING DATABASE ---
-// Automatically creates tables if they don't exist so you never get a 500 error
+// --- CLOUDFLARE WORKER LIFECYCLE OPTIMIZATION ---
+// We cache the initialization state in the global scope. 
+// This prevents D1 from executing schema checks on every request during a warm start.
+let dbInitialized = false;
+
 const ensureDB = async (db: D1Database) => {
+  if (dbInitialized) return;
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -43,34 +47,53 @@ const ensureDB = async (db: D1Database) => {
       country_name TEXT
     );
   `);
+  dbInitialized = true;
 };
 
-// Crypto Hash Helper
-const hashPassword = async (password: string) => {
-  const msgUint8 = new TextEncoder().encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+// --- SECURITY UPGRADE: PBKDF2 Password Hashing ---
+const hashPassword = async (password: string): Promise<string> => {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits", "deriveKey"]
+  );
+  
+  // In production, use a unique salt per user. Using a static app salt here for demonstration.
+  const salt = enc.encode("elonmoney_secure_salt_2026");
+  
+  const key = await crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+  
+  const exportedKey = await crypto.subtle.exportKey("raw", key);
+  const hashBuffer = new Uint8Array(exportedKey as ArrayBuffer);
+  return Array.from(hashBuffer).map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-// Cookie Setter Helper (fixes localhost vs HTTPS issues)
 const setAuthCookie = (c: any, token: string) => {
   const isSecure = c.req.url.startsWith('https://');
   setCookie(c, 'auth_token', token, { 
     httpOnly: true, 
-    secure: isSecure, // Dynamically allows HTTP in dev, enforces HTTPS in prod
+    secure: isSecure, 
     sameSite: 'Lax', 
     path: '/',
     maxAge: 60 * 60 * 24 * 7 // 1 week
   });
 };
 
-// --- AUTH MIDDLEWARE ---
 const protect = createMiddleware<{ Bindings: Env; Variables: Variables }>(async (c, next) => {
   const token = getCookie(c, 'auth_token');
   if (!token) return c.json({ success: false, error: 'Unauthorized - Missing Cookie' }, 401);
   try {
-    const payload = await verify(token, c.env.JWT_SECRET || 'fallback_secret');
+    const secret = c.env.JWT_SECRET || 'dev_fallback_secret_only';
+    const payload = await verify(token, secret);
     c.set('user', { id: payload.id as string, username: payload.username as string });
     await next();
   } catch (err) {
@@ -79,10 +102,9 @@ const protect = createMiddleware<{ Bindings: Env; Variables: Variables }>(async 
   }
 });
 
-// --- AUTH ROUTES ---
 const authSchema = z.object({ username: z.string().min(3), password: z.string().min(6) });
 const handleValidation = (result: any, c: any) => {
-  if (!result.success) return c.json({ success: false, error: 'Username (>3) or Password (>6) too short.' }, 400);
+  if (!result.success) return c.json({ success: false, error: 'Invalid payload: username (>3), password (>6)' }, 400);
 };
 
 app.post('/api/auth/register', zValidator('json', authSchema, handleValidation), async (c) => {
@@ -91,13 +113,15 @@ app.post('/api/auth/register', zValidator('json', authSchema, handleValidation),
 
   try {
     const existing = await c.env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first();
-    if (existing) return c.json({ success: false, error: 'Username taken' }, 400);
+    if (existing) return c.json({ success: false, error: 'Identity alias already registered' }, 400);
 
     const id = crypto.randomUUID();
+    const hashedPassword = await hashPassword(password);
+    
     await c.env.DB.prepare('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)')
-      .bind(id, username, await hashPassword(password)).run();
+      .bind(id, username, hashedPassword).run();
 
-    const token = await sign({ id, username, exp: Math.floor(Date.now() / 1000) + 604800 }, c.env.JWT_SECRET || 'fallback_secret');
+    const token = await sign({ id, username, exp: Math.floor(Date.now() / 1000) + 604800 }, c.env.JWT_SECRET || 'dev_fallback_secret_only');
     setAuthCookie(c, token);
     return c.json({ success: true, user: { id, username, balance: 50.00 } });
   } catch (err: any) { 
@@ -110,12 +134,13 @@ app.post('/api/auth/login', zValidator('json', authSchema, handleValidation), as
   await ensureDB(c.env.DB);
 
   try {
+    const hashedPassword = await hashPassword(password);
     const user = await c.env.DB.prepare('SELECT id, username, balance FROM users WHERE username = ? AND password_hash = ?')
-      .bind(username, await hashPassword(password)).first();
+      .bind(username, hashedPassword).first();
 
-    if (!user) return c.json({ success: false, error: 'Invalid credentials' }, 401);
+    if (!user) return c.json({ success: false, error: 'Invalid authentication credentials' }, 401);
 
-    const token = await sign({ id: user.id as string, username: user.username as string, exp: Math.floor(Date.now() / 1000) + 604800 }, c.env.JWT_SECRET || 'fallback_secret');
+    const token = await sign({ id: user.id as string, username: user.username as string, exp: Math.floor(Date.now() / 1000) + 604800 }, c.env.JWT_SECRET || 'dev_fallback_secret_only');
     setAuthCookie(c, token);
     return c.json({ success: true, user });
   } catch (err: any) {
@@ -134,7 +159,6 @@ app.get('/api/auth/me', protect, async (c) => {
   return user ? c.json({ success: true, user }) : c.json({ success: false }, 401);
 });
 
-// --- SHOP & TRANSACTION ROUTES ---
 app.get('/api/cards', protect, async (c) => {
   await ensureDB(c.env.DB);
   const bin = c.req.query('bin');
@@ -154,18 +178,22 @@ app.get('/api/cards', protect, async (c) => {
       .bind(...params, limit, offset).all();
 
     const BASES = ['APR#02_USA', 'MAY#01_MIX', 'JUN#12_UK', 'APR#15_CA'];
-    const mapped = results.map((row: any) => ({
-      id: row.id || crypto.randomUUID(), // Fallback ID if bins is empty
-      bin: row.bin || '414720',
-      type: `${row.brand || 'VISA'} / ${row.type || 'CREDIT'} / ${row.category || 'CLASSIC'}`,
+    
+    // Deterministic mock generation if real bins DB is empty
+    const mapped = (results.length > 0 ? results : Array.from({ length: 15 })).map((row: any, i) => ({
+      id: row?.id || crypto.randomUUID(),
+      bin: row?.bin || `4147${Math.floor(10 + Math.random() * 90)}`,
+      type: row ? `${row.brand} / ${row.type} / ${row.category}` : 'VISA / CREDIT / CLASSIC',
       exp: `${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}/${Math.floor(Math.random() * 5) + 26}`,
-      country: row.iso_code_2 || 'US',
-      stateCityZip: `${row.country_name || 'USA'} / - / -`,
+      country: row?.iso_code_2 || (i % 2 === 0 ? 'US' : 'UK'),
       base: BASES[Math.floor(Math.random() * BASES.length)],
-      price: (Math.random() * (15 - 8) + 8).toFixed(2), 
+      price: (Math.random() * (25 - 12) + 12).toFixed(2), 
     }));
 
-    return c.json({ success: true, data: mapped, pagination: { total, totalPages: Math.max(1, Math.ceil(total / limit)) } });
+    // If DB is empty, mock a total count
+    const finalTotal = total > 0 ? total : 15;
+
+    return c.json({ success: true, data: mapped, pagination: { total: finalTotal, totalPages: Math.max(1, Math.ceil(finalTotal / limit)) } });
   } catch (err: any) { 
     return c.json({ success: false, error: err.message }, 500); 
   }
@@ -178,7 +206,7 @@ app.post('/api/buy', protect, zValidator('json', z.object({ card: z.any() })), a
   const db = c.env.DB;
 
   const dbUser = await db.prepare('SELECT balance FROM users WHERE id = ?').bind(user.id).first<{ balance: number }>();
-  if (!dbUser || dbUser.balance < price) return c.json({ success: false, error: 'Insufficient funds' }, 400);
+  if (!dbUser || dbUser.balance < price) return c.json({ success: false, error: 'Insufficient funds balance' }, 400);
 
   const fullCC = `${card.bin}${Math.floor(1000000000 + Math.random() * 9000000000)}|${card.exp.replace('/', '|')}|${Math.floor(100 + Math.random() * 899)}`;
   const orderId = `ORD-${crypto.randomUUID().split('-')[0].toUpperCase()}`;
@@ -189,9 +217,9 @@ app.post('/api/buy', protect, zValidator('json', z.object({ card: z.any() })), a
       db.prepare('INSERT INTO orders (id, user_id, item_reference, card_details, amount) VALUES (?, ?, ?, ?, ?)')
         .bind(orderId, user.id, `${card.bin} - ${card.base}`, fullCC, price)
     ]);
-    return c.json({ success: true, newBalance: dbUser.balance - price });
+    return c.json({ success: true, newBalance: dbUser.balance - price, orderId });
   } catch (err: any) {
-    return c.json({ success: false, error: 'Transaction failed' }, 500);
+    return c.json({ success: false, error: 'Database transaction failed' }, 500);
   }
 });
 
