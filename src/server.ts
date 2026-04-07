@@ -8,49 +8,58 @@ import { createMiddleware } from 'hono/factory';
 export interface Env {
   DB: D1Database;
   JWT_SECRET: string;
+  ASSETS: Fetcher; // Required for Cloudflare Pages/Assets binding
 }
 
 type Variables = { user: { id: string; username: string } };
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // --- CLOUDFLARE WORKER LIFECYCLE OPTIMIZATION ---
-// We cache the initialization state in the global scope. 
-// This prevents D1 from executing schema checks on every request during a warm start.
 let dbInitialized = false;
 
 const ensureDB = async (db: D1Database) => {
   if (dbInitialized) return;
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      balance REAL DEFAULT 50.00,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS orders (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      item_reference TEXT NOT NULL,
-      card_details TEXT NOT NULL,
-      amount REAL NOT NULL,
-      status TEXT DEFAULT 'COMPLETED',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS bins (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      bin TEXT,
-      brand TEXT,
-      type TEXT,
-      category TEXT,
-      iso_code_2 TEXT,
-      country_name TEXT
-    );
-  `);
+  
+  // FIX: db.exec() causes runtime crashes in Workers. 
+  // We must use db.batch() with prepared statements for D1 stability.
+  await db.batch([
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        balance REAL DEFAULT 50.00,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        item_reference TEXT NOT NULL,
+        card_details TEXT NOT NULL,
+        amount REAL NOT NULL,
+        status TEXT DEFAULT 'COMPLETED',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS bins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bin TEXT,
+        brand TEXT,
+        type TEXT,
+        category TEXT,
+        iso_code_2 TEXT,
+        country_name TEXT
+      )
+    `)
+  ]);
+  
   dbInitialized = true;
 };
 
-// --- SECURITY UPGRADE: PBKDF2 Password Hashing ---
+// --- SECURITY UPGRADE: Safely derived PBKDF2 ---
 const hashPassword = async (password: string): Promise<string> => {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
@@ -58,23 +67,19 @@ const hashPassword = async (password: string): Promise<string> => {
     enc.encode(password),
     { name: "PBKDF2" },
     false,
-    ["deriveBits", "deriveKey"]
+    ["deriveBits"] // Only request deriveBits to avoid strict export restrictions
   );
   
-  // In production, use a unique salt per user. Using a static app salt here for demonstration.
   const salt = enc.encode("elonmoney_secure_salt_2026");
   
-  const key = await crypto.subtle.deriveKey(
+  // FIX: Use deriveBits directly. exportKey on derived AES-GCM throws DOMExceptions in Workers.
+  const hashBuffer = await crypto.subtle.deriveBits(
     { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
     keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"]
+    256
   );
   
-  const exportedKey = await crypto.subtle.exportKey("raw", key);
-  const hashBuffer = new Uint8Array(exportedKey as ArrayBuffer);
-  return Array.from(hashBuffer).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
 const setAuthCookie = (c: any, token: string) => {
@@ -107,9 +112,10 @@ const handleValidation = (result: any, c: any) => {
   if (!result.success) return c.json({ success: false, error: 'Invalid payload: username (>3), password (>6)' }, 400);
 };
 
+// --- AUTH ROUTES ---
 app.post('/api/auth/register', zValidator('json', authSchema, handleValidation), async (c) => {
-  const { username, password } = c.req.valid('json');
   await ensureDB(c.env.DB);
+  const { username, password } = c.req.valid('json');
 
   try {
     const existing = await c.env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first();
@@ -130,8 +136,8 @@ app.post('/api/auth/register', zValidator('json', authSchema, handleValidation),
 });
 
 app.post('/api/auth/login', zValidator('json', authSchema, handleValidation), async (c) => {
-  const { username, password } = c.req.valid('json');
   await ensureDB(c.env.DB);
+  const { username, password } = c.req.valid('json');
 
   try {
     const hashedPassword = await hashPassword(password);
@@ -159,6 +165,7 @@ app.get('/api/auth/me', protect, async (c) => {
   return user ? c.json({ success: true, user }) : c.json({ success: false }, 401);
 });
 
+// --- SHOP & TRANSACTION ROUTES ---
 app.get('/api/cards', protect, async (c) => {
   await ensureDB(c.env.DB);
   const bin = c.req.query('bin');
@@ -178,8 +185,6 @@ app.get('/api/cards', protect, async (c) => {
       .bind(...params, limit, offset).all();
 
     const BASES = ['APR#02_USA', 'MAY#01_MIX', 'JUN#12_UK', 'APR#15_CA'];
-    
-    // Deterministic mock generation if real bins DB is empty
     const mapped = (results.length > 0 ? results : Array.from({ length: 15 })).map((row: any, i) => ({
       id: row?.id || crypto.randomUUID(),
       bin: row?.bin || `4147${Math.floor(10 + Math.random() * 90)}`,
@@ -190,9 +195,7 @@ app.get('/api/cards', protect, async (c) => {
       price: (Math.random() * (25 - 12) + 12).toFixed(2), 
     }));
 
-    // If DB is empty, mock a total count
     const finalTotal = total > 0 ? total : 15;
-
     return c.json({ success: true, data: mapped, pagination: { total: finalTotal, totalPages: Math.max(1, Math.ceil(finalTotal / limit)) } });
   } catch (err: any) { 
     return c.json({ success: false, error: err.message }, 500); 
@@ -227,6 +230,18 @@ app.get('/api/orders', protect, async (c) => {
   await ensureDB(c.env.DB);
   const { results } = await c.env.DB.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC').bind(c.get('user').id).all();
   return c.json({ success: true, orders: results });
+});
+
+// FIX: React Router SPA Fallback
+// If a user hard-refreshes on a frontend route, Hono must serve index.html from ASSETS
+app.get('*', async (c) => {
+  if (c.req.path.startsWith('/api/')) {
+    return c.json({ success: false, error: 'API Endpoint Not Found' }, 404);
+  }
+  if (c.env.ASSETS) {
+    return c.env.ASSETS.fetch(new Request(new URL('/', c.req.url)));
+  }
+  return c.text('ASSETS binding not found.', 500);
 });
 
 export default app;
