@@ -24,15 +24,22 @@ export function Auth() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseError) {
+        // FIX: If Cloudflare returns an HTML 500 error page, it gets caught here.
+        throw new Error(`Server execution crashed (Status ${res.status}). Check Worker logs.`);
+      }
 
       if (data.success) {
         await checkAuth();
       } else {
         setError(data.error || 'Authentication failed');
       }
-    } catch (err) {
-      setError('A network error occurred');
+    } catch (err: any) {
+      setError(err.message || 'A network error occurred');
     } finally {
       setLoading(false);
     }
